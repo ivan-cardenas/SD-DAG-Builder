@@ -76,12 +76,14 @@
     </button>
     <button class="tool-btn" onclick="deleteSelected()" title="Delete (Del)">✕ Delete</button>
     <div class="sep"></div>
+    <button class="tool-btn" onclick="newModel()">New</button>
     <button class="tool-btn" onclick="loadDemo()">Demo</button>
     <button class="tool-btn success" onclick="openRunPanel()">▶ Run</button>
     <button class="tool-btn" onclick="validateUnits()">✓ Validate</button>
     <div class="sep"></div>
     <button class="tool-btn" onclick="exportJSON()">💾 JSON</button>
     <button class="tool-btn" onclick="importJSON()">📂 Load</button>
+    <button class="tool-btn" onclick="openDjangoImportModal()" title="Import from Django models.py">📥 Django</button>
     <button class="tool-btn success" onclick="openExportModal()">⬇ Django</button>
     <button class="tool-btn" onclick="exportMDL()">⬇ .mdl</button>
   </div>
@@ -107,6 +109,7 @@
         <g id="objects-layer"></g>
         <g id="edges-layer"></g>
         <g id="nodes-layer"></g>
+        <g id="preview-layer"></g>
       </svg>
     </div>
 
