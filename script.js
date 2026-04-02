@@ -3,6 +3,7 @@ const gridLayer = document.getElementById('grid-layer');
 const objectsLayer = document.getElementById('objects-layer');
 const edgesLayer = document.getElementById('edges-layer');
 const nodesLayer = document.getElementById('nodes-layer');
+const previewLayer = document.getElementById('preview-layer');
 
 const DARK = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -34,14 +35,26 @@ let lastClickId = null;
 function genId() { return 'e' + (++idCounter); }
 function snapGrid(v, g = 20) { return Math.round(v / g) * g; }
 
+const TOOL_HINTS = {
+  select: 'Click to select • Double-click to edit • Drag to move',
+  object: 'Click canvas to place object',
+  stock: 'Click inside an object to place stock',
+  const: 'Click inside an object to place constant',
+  flow: 'Click source node, then click target node',
+  aux: 'Click canvas to place auxiliary variable',
+  link: 'Click source node, then click target node'
+};
+
 function setTool(t) {
   tool = t;
   linkStart = null;
+  clearPreviewLine();
   document.querySelectorAll('#toolbar .tool-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('btn-' + t);
   if (btn) btn.classList.add('active');
   canvas.style.cursor = { select: 'default', link: 'crosshair', flow: 'crosshair' }[t] || 'cell';
   document.getElementById('status-tool').textContent = 'Tool: ' + t.charAt(0).toUpperCase() + t.slice(1);
+  document.getElementById('status-hint').textContent = TOOL_HINTS[t] || '';
 }
 
 function getCanvasPos(e) {
@@ -156,6 +169,56 @@ function renderAll() {
   edges.forEach(renderEdge);
   nodes.forEach(renderNode);
   updateTree();
+  saveToStorage();
+}
+
+// Preview line for flow/link drafting
+function clearPreviewLine() {
+  previewLayer.innerHTML = '';
+}
+
+function drawPreviewLine(x1, y1, x2, y2) {
+  previewLayer.innerHTML = '';
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', x1);
+  line.setAttribute('y1', y1);
+  line.setAttribute('x2', x2);
+  line.setAttribute('y2', y2);
+  line.setAttribute('stroke', tool === 'flow' ? '#639922' : '#888');
+  line.setAttribute('stroke-width', '1.5');
+  line.setAttribute('stroke-dasharray', '6 3');
+  line.setAttribute('opacity', '0.6');
+  line.setAttribute('pointer-events', 'none');
+  previewLayer.appendChild(line);
+}
+
+// localStorage persistence
+function saveToStorage() {
+  try {
+    localStorage.setItem('sd_model', JSON.stringify({ objects, nodes, edges, idCounter }));
+  } catch(e) {}
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem('sd_model');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.nodes?.length && !data.objects?.length) return false;
+    objects = data.objects || [];
+    nodes = data.nodes || [];
+    edges = data.edges || [];
+    idCounter = data.idCounter || 0;
+    return true;
+  } catch(e) { return false; }
+}
+
+function newModel() {
+  if (!confirm('Start a new model? Unsaved changes will be lost.')) return;
+  objects = []; nodes = []; edges = []; idCounter = 0;
+  localStorage.removeItem('sd_model');
+  renderAll();
+  setTool('select');
 }
 
 function renderObject(obj) {
@@ -446,6 +509,8 @@ function selectEdge(e) {
 function deselectAll() {
   selectedType = null;
   selectedId = null;
+  linkStart = null;
+  clearPreviewLine();
   renderAll();
 }
 
@@ -506,12 +571,15 @@ function onNodeMouseDown(e, n) {
   if (tool === 'link' || tool === 'flow') {
     if (!linkStart) {
       linkStart = n;
+      document.getElementById('status-hint').textContent = `Source: "${n.name}" — now click target node  (Esc to cancel)`;
     } else if (linkStart.id !== n.id) {
       const exists = edges.some(ed => ed.src === linkStart.id && ed.tgt === n.id);
       if (!exists) {
         const type = tool === 'flow' ? 'flow' : 'link';
         const edge = createEdge(type, linkStart.id, n.id);
+        clearPreviewLine();
         renderAll();
+        document.getElementById('status-hint').textContent = TOOL_HINTS[tool] || '';
         // Open modal for the new edge (especially for flows)
         if (type === 'flow') {
           skipNextCanvasClick = true;
@@ -519,6 +587,7 @@ function onNodeMouseDown(e, n) {
         }
       }
       linkStart = null;
+      clearPreviewLine();
     }
     return;
   }
@@ -566,9 +635,16 @@ canvas.addEventListener('click', e => {
   }
 });
 
+canvas.addEventListener('mousemove', e => {
+  if (linkStart && (tool === 'flow' || tool === 'link')) {
+    const pos = getCanvasPos(e);
+    drawPreviewLine(linkStart.x, linkStart.y, pos.x, pos.y);
+  }
+});
+
 window.addEventListener('mousemove', e => {
   if (!dragging) return;
-  
+
   if (dragging.type === 'object') {
     const obj = dragging.obj;
     const newX = e.clientX - dragOffset.x;
@@ -947,6 +1023,155 @@ function downloadExport() {
   });
 }
 
+// Django Import
+function openDjangoImportModal() {
+  modalKind = 'django-import';
+  document.getElementById('modal-title').textContent = 'Import from Django models.py';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-hint" style="margin-bottom:8px">
+      Paste your Django <code>models.py</code> content below. Classes with numeric fields will become Objects with Stock/Constant nodes. <code>ForeignKey</code> relationships become Links.
+    </div>
+    <div class="form-row">
+      <label>models.py content</label>
+      <textarea id="m-django-code" style="min-height:180px;font-size:10px" placeholder="from django.db import models&#10;&#10;class Reservoir(models.Model):&#10;    volume = models.FloatField(default=1000)&#10;    max_capacity = models.FloatField(default=5000)&#10;    ..."></textarea>
+    </div>
+    <div class="form-row">
+      <label>Import mode</label>
+      <select id="m-import-mode">
+        <option value="replace">Replace current model</option>
+        <option value="append">Append to current model</option>
+      </select>
+    </div>
+    <div id="m-django-preview" style="font-size:10px;color:var(--text-secondary);margin-top:6px"></div>
+  `;
+  document.getElementById('modal-buttons').innerHTML = `
+    <button onclick="closeModal()">Cancel</button>
+    <button onclick="previewDjangoImport()">Preview</button>
+    <button class="primary" onclick="confirmDjangoImport()">Import</button>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('m-django-code').focus(), 50);
+}
+
+function parseDjangoModels(code) {
+  const importedObjects = [];
+  const importedNodes = [];
+  const importedEdges = [];
+
+  // Extract class blocks
+  const classRe = /class\s+(\w+)\s*\(([^)]*)\)\s*:/g;
+  const classMatches = [];
+  let m;
+  while ((m = classRe.exec(code)) !== null) {
+    classMatches.push({ name: m[1], bases: m[2], bodyStart: m.index + m[0].length });
+  }
+
+  const NUMERIC = ['FloatField','IntegerField','DecimalField','PositiveIntegerField',
+                   'PositiveSmallIntegerField','BigIntegerField','SmallIntegerField'];
+  const RELATION = ['ForeignKey','OneToOneField','ManyToManyField'];
+
+  const parsedClasses = [];
+  classMatches.forEach((cls, idx) => {
+    const body = idx < classMatches.length - 1
+      ? code.slice(cls.bodyStart, classMatches[idx + 1].bodyStart)
+      : code.slice(cls.bodyStart);
+
+    if (cls.name === 'Meta' || cls.name === 'Migration') return;
+
+    const fields = [];
+    const fieldRe = /^\s{4}(\w+)\s*=\s*models\.(\w+)\s*\(([^)]*)\)/gm;
+    let fm;
+    while ((fm = fieldRe.exec(body)) !== null) {
+      if (fm[1] === 'class') continue;
+      fields.push({ name: fm[1], fieldType: fm[2], args: fm[3] });
+    }
+    if (fields.length === 0) return;
+    parsedClasses.push({ name: cls.name, fields });
+  });
+
+  // Layout grid
+  const COLS = 3, OBJ_W = 200, GAP_X = 60, GAP_Y = 40, START_X = 80, START_Y = 80;
+  const objMap = {}; // className -> { obj, firstNode }
+
+  parsedClasses.forEach((cls, idx) => {
+    const col = idx % COLS;
+    const row = Math.floor(idx / COLS);
+    const numericFields = cls.fields.filter(f => NUMERIC.includes(f.fieldType));
+    if (numericFields.length === 0) return;
+
+    const objH = Math.max(120, 50 + numericFields.length * 50);
+    const x = START_X + col * (OBJ_W + GAP_X);
+    const y = START_Y + row * (objH + GAP_Y);
+
+    const objId = genId();
+    const obj = { id: objId, name: cls.name, x, y, w: OBJ_W, h: objH };
+    importedObjects.push(obj);
+
+    let nodeY = y + 45;
+    let firstNode = null;
+    numericFields.forEach(f => {
+      const defaultMatch = f.args.match(/default\s*=\s*([\d.eE+\-]+)/);
+      const eq = defaultMatch ? defaultMatch[1] : '0';
+      // Heuristic: rate/factor/coeff/param → const, otherwise stock
+      const isConst = /rate|factor|coeff|param|max|min|threshold|alpha|beta|gamma/i.test(f.name);
+      const type = isConst ? 'const' : 'stock';
+      const nodeId = genId();
+      const node = { id: nodeId, type, name: f.name, eq, units: '', x: x + OBJ_W / 2, y: nodeY, objectId: objId };
+      importedNodes.push(node);
+      if (!firstNode) firstNode = node;
+      nodeY += 50;
+    });
+    objMap[cls.name] = { obj, firstNode };
+  });
+
+  // ForeignKey / OneToOneField → link edges
+  parsedClasses.forEach(cls => {
+    cls.fields.filter(f => RELATION.includes(f.fieldType)).forEach(f => {
+      const toMatch = f.args.match(/['"]([\w.]+)['"]/);
+      if (!toMatch) return;
+      const targetName = toMatch[1].split('.').pop();
+      const src = objMap[cls.name];
+      const tgt = objMap[targetName];
+      if (src?.firstNode && tgt?.firstNode) {
+        importedEdges.push({ id: genId(), type: 'link', src: src.firstNode.id, tgt: tgt.firstNode.id, eq: '', units: '' });
+      }
+    });
+  });
+
+  return { objects: importedObjects, nodes: importedNodes, edges: importedEdges };
+}
+
+function previewDjangoImport() {
+  const code = document.getElementById('m-django-code').value;
+  if (!code.trim()) return;
+  const result = parseDjangoModels(code);
+  document.getElementById('m-django-preview').innerHTML =
+    `<strong>Preview:</strong> ${result.objects.length} object(s), ${result.nodes.length} node(s), ${result.edges.length} link(s) will be imported.`;
+}
+
+function confirmDjangoImport() {
+  const code = document.getElementById('m-django-code').value;
+  if (!code.trim()) { closeModal(); return; }
+  const mode = document.getElementById('m-import-mode').value;
+  const result = parseDjangoModels(code);
+  if (result.objects.length === 0 && result.nodes.length === 0) {
+    document.getElementById('m-django-preview').innerHTML =
+      '<span style="color:var(--text-error)">No importable models found. Make sure classes have FloatField/IntegerField fields.</span>';
+    return;
+  }
+  if (mode === 'replace') {
+    objects = result.objects;
+    nodes = result.nodes;
+    edges = result.edges;
+  } else {
+    objects.push(...result.objects);
+    nodes.push(...result.nodes);
+    edges.push(...result.edges);
+  }
+  closeModal();
+  renderAll();
+}
+
 // JSON Export/Import
 function exportJSON() {
   const data = { objects, nodes, edges, idCounter };
@@ -1193,5 +1418,6 @@ function loadDemo() {
 }
 
 drawGrid();
-loadDemo();
+if (!loadFromStorage()) loadDemo();
+renderAll();
 setTool('select');
