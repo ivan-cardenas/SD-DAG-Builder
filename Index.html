@@ -76,6 +76,11 @@
     </button>
     <button class="tool-btn" onclick="deleteSelected()" title="Delete (Del)">✕ Delete</button>
     <div class="sep"></div>
+    <button class="tool-btn" onclick="zoomIn()" title="Zoom In (Scroll Up)">+ Zoom</button>
+    <button class="tool-btn" onclick="zoomOut()" title="Zoom Out (Scroll Down)">- Zoom</button>
+    <button class="tool-btn" onclick="zoomFit()" title="Fit all elements in view">⊞ Fit</button>
+    <span id="zoom-level" style="font-size:10px;color:var(--text-secondary);min-width:36px;text-align:center">100%</span>
+    <div class="sep"></div>
     <button class="tool-btn" onclick="newModel()">New</button>
     <button class="tool-btn" onclick="loadDemo()">Demo</button>
     <button class="tool-btn success" onclick="openRunPanel()">▶ Run</button>
@@ -147,7 +152,7 @@
 
   <div id="statusbar">
     <span id="status-tool">Tool: Object</span>
-    <span id="status-hint">Click canvas to place • Double-click to edit • Drag to move</span>
+    <span id="status-hint">Click canvas to place • Double-click to edit • Drag to move • Scroll to zoom • Ctrl+drag to pan</span>
   </div>
 </div>
 

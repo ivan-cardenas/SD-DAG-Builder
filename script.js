@@ -32,6 +32,18 @@ let skipNextCanvasClick = false;
 let lastClickTime = 0;
 let lastClickId = null;
 
+// Zoom & pan state
+let viewBox = { x: 0, y: 0, w: 1400, h: 900 };
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 5;
+let currentZoom = 1;
+
+function applyViewBox() {
+  canvas.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
+}
+
 function genId() { return 'e' + (++idCounter); }
 function snapGrid(v, g = 20) { return Math.round(v / g) * g; }
 
@@ -59,7 +71,12 @@ function setTool(t) {
 
 function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const scaleX = viewBox.w / rect.width;
+  const scaleY = viewBox.h / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX + viewBox.x,
+    y: (e.clientY - rect.top) * scaleY + viewBox.y
+  };
 }
 
 // Get all available variables for equation helper
@@ -550,7 +567,8 @@ function onObjectMouseDown(e, obj) {
   if (tool === 'select') {
     selectObject(obj);
     dragging = { type: 'object', obj };
-    dragOffset = { x: e.clientX - obj.x, y: e.clientY - obj.y };
+    const pos = getCanvasPos(e);
+    dragOffset = { x: pos.x - obj.x, y: pos.y - obj.y };
   }
 }
 
@@ -594,7 +612,8 @@ function onNodeMouseDown(e, n) {
   if (tool === 'select') {
     selectNode(n);
     dragging = { type: 'node', node: n };
-    dragOffset = { x: e.clientX - n.x, y: e.clientY - n.y };
+    const pos = getCanvasPos(e);
+    dragOffset = { x: pos.x - n.x, y: pos.y - n.y };
   }
 }
 
@@ -603,6 +622,7 @@ canvas.addEventListener('click', e => {
     skipNextCanvasClick = false;
     return;
   }
+  if (e.ctrlKey) return; // Ctrl+click is pan, not place
   
   if (tool === 'select' || tool === 'link' || tool === 'flow') {
     if (e.target === canvas || e.target.closest('#grid-layer')) {
@@ -645,18 +665,19 @@ canvas.addEventListener('mousemove', e => {
 window.addEventListener('mousemove', e => {
   if (!dragging) return;
 
+  const pos = getCanvasPos(e);
   if (dragging.type === 'object') {
     const obj = dragging.obj;
-    const newX = e.clientX - dragOffset.x;
-    const newY = e.clientY - dragOffset.y;
+    const newX = pos.x - dragOffset.x;
+    const newY = pos.y - dragOffset.y;
     const dx = newX - obj.x, dy = newY - obj.y;
     obj.x = newX;
     obj.y = newY;
     getNodesInObject(obj.id).forEach(n => { n.x += dx; n.y += dy; });
   } else if (dragging.type === 'node') {
     const n = dragging.node;
-    n.x = e.clientX - dragOffset.x;
-    n.y = e.clientY - dragOffset.y;
+    n.x = pos.x - dragOffset.x;
+    n.y = pos.y - dragOffset.y;
     const obj = getObjectAt(n.x, n.y);
     if ((n.type === 'stock' || n.type === 'const') && obj) {
       n.objectId = obj.id;
@@ -668,7 +689,127 @@ window.addEventListener('mousemove', e => {
   renderAll();
 });
 
-window.addEventListener('mouseup', () => { dragging = null; });
+window.addEventListener('mouseup', () => {
+  dragging = null;
+  if (isPanning) {
+    isPanning = false;
+    canvas.style.cursor = { select: 'default', link: 'crosshair', flow: 'crosshair' }[tool] || 'cell';
+  }
+});
+
+// Zoom with mouse wheel
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  // Mouse position in SVG coords before zoom
+  const mx = (e.clientX - rect.left) / rect.width * viewBox.w + viewBox.x;
+  const my = (e.clientY - rect.top) / rect.height * viewBox.h + viewBox.y;
+
+  const factor = e.deltaY > 0 ? 1.1 : 1 / 1.1;
+  const newZoom = currentZoom / factor;
+  if (newZoom < ZOOM_MIN || newZoom > ZOOM_MAX) return;
+  currentZoom = newZoom;
+
+  const newW = viewBox.w * factor;
+  const newH = viewBox.h * factor;
+  viewBox.x = mx - (mx - viewBox.x) * factor;
+  viewBox.y = my - (my - viewBox.y) * factor;
+  viewBox.w = newW;
+  viewBox.h = newH;
+  applyViewBox();
+  drawGrid();
+  updateZoomDisplay();
+}, { passive: false });
+
+// Pan with middle mouse button or Ctrl+left click
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+    e.preventDefault();
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY };
+    canvas.style.cursor = 'grabbing';
+  }
+});
+
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  const rect = canvas.getBoundingClientRect();
+  const dx = (e.clientX - panStart.x) / rect.width * viewBox.w;
+  const dy = (e.clientY - panStart.y) / rect.height * viewBox.h;
+  viewBox.x -= dx;
+  viewBox.y -= dy;
+  panStart = { x: e.clientX, y: e.clientY };
+  applyViewBox();
+  drawGrid();
+});
+
+function zoomIn() {
+  zoomTo(currentZoom * 1.3);
+}
+
+function zoomOut() {
+  zoomTo(currentZoom / 1.3);
+}
+
+function zoomFit() {
+  if (nodes.length === 0 && objects.length === 0) {
+    viewBox = { x: 0, y: 0, w: 1400, h: 900 };
+    currentZoom = 1;
+  } else {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    objects.forEach(o => {
+      minX = Math.min(minX, o.x);
+      minY = Math.min(minY, o.y);
+      maxX = Math.max(maxX, o.x + o.w);
+      maxY = Math.max(maxY, o.y + o.h);
+    });
+    nodes.forEach(n => {
+      minX = Math.min(minX, n.x - 30);
+      minY = Math.min(minY, n.y - 30);
+      maxX = Math.max(maxX, n.x + 30);
+      maxY = Math.max(maxY, n.y + 30);
+    });
+    const padding = 80;
+    minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+    const rect = canvas.getBoundingClientRect();
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const scaleX = contentW / rect.width;
+    const scaleY = contentH / rect.height;
+    const scale = Math.max(scaleX, scaleY);
+    viewBox.w = rect.width * scale;
+    viewBox.h = rect.height * scale;
+    viewBox.x = minX - (viewBox.w - contentW) / 2;
+    viewBox.y = minY - (viewBox.h - contentH) / 2;
+    currentZoom = rect.width / viewBox.w;
+  }
+  applyViewBox();
+  drawGrid();
+  updateZoomDisplay();
+}
+
+function zoomTo(newZoom) {
+  newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+  const rect = canvas.getBoundingClientRect();
+  // Zoom toward center of current view
+  const cx = viewBox.x + viewBox.w / 2;
+  const cy = viewBox.y + viewBox.h / 2;
+  const newW = rect.width / newZoom;
+  const newH = rect.height / newZoom;
+  viewBox.x = cx - newW / 2;
+  viewBox.y = cy - newH / 2;
+  viewBox.w = newW;
+  viewBox.h = newH;
+  currentZoom = newZoom;
+  applyViewBox();
+  drawGrid();
+  updateZoomDisplay();
+}
+
+function updateZoomDisplay() {
+  const el = document.getElementById('zoom-level');
+  if (el) el.textContent = Math.round(currentZoom * 100) + '%';
+}
 
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -1387,13 +1528,22 @@ function drawChart(times, series, tracked) {
 
 // Grid
 function drawGrid() {
-  const W = 1400, H = 900, G = 20;
-  for (let x = G; x < W; x += G) {
-    for (let y = G; y < H; y += G) {
+  gridLayer.innerHTML = '';
+  const G = 20;
+  // Adaptive dot spacing: skip dots when zoomed out far to keep performance
+  const step = viewBox.w > 4000 ? G * 4 : viewBox.w > 2000 ? G * 2 : G;
+  const startX = Math.floor(viewBox.x / step) * step;
+  const startY = Math.floor(viewBox.y / step) * step;
+  const endX = viewBox.x + viewBox.w;
+  const endY = viewBox.y + viewBox.h;
+  // Scale dot radius with zoom so dots don't vanish or become huge
+  const dotR = Math.max(0.5, Math.min(2, viewBox.w / 1400));
+  for (let x = startX; x <= endX; x += step) {
+    for (let y = startY; y <= endY; y += step) {
       const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       c.setAttribute('cx', x);
       c.setAttribute('cy', y);
-      c.setAttribute('r', 1);
+      c.setAttribute('r', dotR);
       c.classList.add('grid-dot');
       gridLayer.appendChild(c);
     }
@@ -1417,7 +1567,15 @@ function loadDemo() {
   renderAll();
 }
 
+// Initialize viewBox to match actual canvas size
+(function initViewBox() {
+  const rect = canvas.getBoundingClientRect();
+  viewBox.w = rect.width || 1400;
+  viewBox.h = rect.height || 900;
+})();
+applyViewBox();
 drawGrid();
 if (!loadFromStorage()) loadDemo();
 renderAll();
 setTool('select');
+updateZoomDisplay();
