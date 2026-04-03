@@ -959,37 +959,283 @@ class SystemDynamicsBase(models.Model):
 
 function generateViews() {
   const objNames = objects.map(o => o.name);
-  
-  let code = `from django.http import JsonResponse
-from django.views import View
-from .models import ${objNames.length ? objNames.join(', ') : 'SystemDynamicsBase'}
 
-def compute_flows(state, dt):
-    """Compute flow rates. Flows defined on edges:"""
-    derivatives = {}
-    
-`;
+  // Build data dictionaries from the current diagram
+  const stockNodes = nodes.filter(n => n.type === 'stock');
+  const constNodes = nodes.filter(n => n.type === 'const');
+  const auxNodes = nodes.filter(n => n.type === 'aux');
+  const flowNodes = nodes.filter(n => n.type === 'flow');
+  const flowEdges = edges.filter(e => e.type === 'flow');
 
-  edges.filter(e => e.type === 'flow' && e.eq).forEach(edge => {
-    const src = nodes.find(n => n.id === edge.src);
-    const tgt = nodes.find(n => n.id === edge.tgt);
-    code += `    # ${src?.name} → ${tgt?.name}\n`;
-    code += `    # ${edge.eq}\n\n`;
+  function pyDict(entries, indent = 4) {
+    if (entries.length === 0) return '{}';
+    const pad = ' '.repeat(indent);
+    return '{\n' + entries.join('\n') + '\n}';
+  }
+
+  function pyEq(eq) {
+    return (eq || '0').replace(/\^/g, '**');
+  }
+
+  // STOCKS dict
+  const stockEntries = stockNodes.map(n => {
+    const obj = objects.find(o => o.id === n.objectId);
+    return `    '${n.name}': {'initial': ${parseFloat(n.eq) || 0}, 'units': '${n.units || ''}', 'object': '${obj?.name || ''}'},`;
   });
 
-  code += `    return derivatives
+  // CONSTANTS dict
+  const constEntries = constNodes.map(n => {
+    const obj = objects.find(o => o.id === n.objectId);
+    return `    '${n.name}': {'value': ${parseFloat(n.eq) || 0}, 'units': '${n.units || ''}', 'object': '${obj?.name || ''}'},`;
+  });
 
+  // AUXILIARIES dict
+  const auxEntries = auxNodes.map(n =>
+    `    '${n.name}': {'equation': '${pyEq(n.eq)}', 'units': '${n.units || ''}'},`
+  );
+
+  // FLOWS dict (flow nodes with their own equations)
+  const flowEntries = flowNodes.map(n =>
+    `    '${n.name}': {'equation': '${pyEq(n.eq)}', 'units': '${n.units || ''}'},`
+  );
+
+  // STOCK_FLOWS: for each stock, collect inflow/outflow edge equations
+  const stockFlowMap = {};
+  stockNodes.forEach(n => { stockFlowMap[n.name] = { inflows: [], outflows: [] }; });
+  flowEdges.forEach(e => {
+    const tgtNode = nodes.find(n => n.id === e.tgt);
+    const srcNode = nodes.find(n => n.id === e.src);
+    if (tgtNode && tgtNode.type === 'stock' && stockFlowMap[tgtNode.name]) {
+      stockFlowMap[tgtNode.name].inflows.push(pyEq(e.eq));
+    }
+    if (srcNode && srcNode.type === 'stock' && stockFlowMap[srcNode.name]) {
+      stockFlowMap[srcNode.name].outflows.push(pyEq(e.eq));
+    }
+  });
+  const stockFlowEntries = Object.entries(stockFlowMap).map(([name, flows]) =>
+    `    '${name}': {'inflows': [${flows.inflows.map(e => `'${e}'`).join(', ')}], 'outflows': [${flows.outflows.map(e => `'${e}'`).join(', ')}]},`
+  );
+
+  let code = `import json
+import math
+import re
+from django.http import JsonResponse
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from .models import ${objNames.length ? objNames.join(', ') : 'SystemDynamicsBase'}
+
+
+# ──────────────────────────────────────────────
+# Model definitions extracted from SD Builder
+# ──────────────────────────────────────────────
+
+STOCKS = {
+${stockEntries.join('\n')}
+}
+
+CONSTANTS = {
+${constEntries.join('\n')}
+}
+
+AUXILIARIES = {
+${auxEntries.join('\n')}
+}
+
+FLOWS = {
+${flowEntries.join('\n')}
+}
+
+STOCK_FLOWS = {
+${stockFlowEntries.join('\n')}
+}
+
+
+# ──────────────────────────────────────────────
+# Expression evaluator
+# ──────────────────────────────────────────────
+
+SAFE_MATH = {
+    '__builtins__': {},
+    'abs': abs, 'min': min, 'max': max, 'round': round,
+    'sqrt': math.sqrt, 'exp': math.exp, 'log': math.log,
+    'log10': math.log10, 'pow': pow,
+    'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
+    'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
+    'pi': math.pi, 'e': math.e,
+    'ceil': math.ceil, 'floor': math.floor,
+}
+
+
+def safe_eval(expr, state):
+    """Evaluate a math expression with variable substitution."""
+    if not expr or not expr.strip():
+        return 0.0
+    e = expr.strip()
+    # Replace variable names with their values (longest first to avoid partial matches)
+    names = sorted(state.keys(), key=len, reverse=True)
+    for name in names:
+        e = re.sub(r'\\b' + re.escape(name) + r'\\b', str(float(state[name])), e)
+    e = e.replace('^', '**')
+    try:
+        return float(eval(e, SAFE_MATH))
+    except Exception:
+        return 0.0
+
+
+# ──────────────────────────────────────────────
+# Simulation engine
+# ──────────────────────────────────────────────
+
+def compute_step(stock_state, constants):
+    """Compute auxiliaries, flows, and stock derivatives for one timestep."""
+    state = {**stock_state, **constants}
+
+    # 1. Evaluate auxiliary variables
+    for name, aux in AUXILIARIES.items():
+        state[name] = safe_eval(aux['equation'], state)
+
+    # 2. Evaluate flow-node equations
+    for name, flow in FLOWS.items():
+        state[name] = safe_eval(flow['equation'], state)
+
+    # 3. Compute stock derivatives from flow-edge equations
+    derivatives = {}
+    for stock_name, connections in STOCK_FLOWS.items():
+        inflow = sum(safe_eval(eq, state) for eq in connections['inflows'])
+        outflow = sum(safe_eval(eq, state) for eq in connections['outflows'])
+        derivatives[stock_name] = inflow - outflow
+
+    for name in STOCKS:
+        derivatives.setdefault(name, 0.0)
+
+    return state, derivatives
+
+
+def simulate(t_start=0, t_end=100, dt=0.25, method='euler', overrides=None):
+    """
+    Run the system dynamics simulation.
+
+    Args:
+        t_start: Start time.
+        t_end:   End time.
+        dt:      Timestep.
+        method:  'euler' or 'rk4'.
+        overrides: Dict of {variable_name: value} to override initial/constant values.
+
+    Returns:
+        Dict with 'times' and 'series' (variable name -> list of values).
+    """
+    constants = {name: c['value'] for name, c in CONSTANTS.items()}
+    stock_state = {name: s['initial'] for name, s in STOCKS.items()}
+
+    if overrides:
+        for k, v in overrides.items():
+            if k in stock_state:
+                stock_state[k] = float(v)
+            elif k in constants:
+                constants[k] = float(v)
+
+    tracked_names = list(STOCKS) + list(AUXILIARIES) + list(FLOWS)
+    times = []
+    series = {name: [] for name in tracked_names}
+
+    t = t_start
+    while t <= t_end + dt * 0.001:
+        times.append(round(t, 10))
+        state, derivatives = compute_step(stock_state, constants)
+
+        for name in tracked_names:
+            series[name].append(state.get(name, 0.0))
+
+        if t >= t_end:
+            break
+
+        if method == 'rk4':
+            k1 = derivatives
+            mid1 = {n: stock_state[n] + k1[n] * dt / 2 for n in STOCKS}
+            _, k2 = compute_step(mid1, constants)
+            mid2 = {n: stock_state[n] + k2[n] * dt / 2 for n in STOCKS}
+            _, k3 = compute_step(mid2, constants)
+            end = {n: stock_state[n] + k3[n] * dt for n in STOCKS}
+            _, k4 = compute_step(end, constants)
+            for n in STOCKS:
+                stock_state[n] += (k1[n] + 2 * k2[n] + 2 * k3[n] + k4[n]) * dt / 6
+        else:
+            for n in STOCKS:
+                stock_state[n] += derivatives[n] * dt
+
+        t += dt
+
+    return {'times': times, 'series': series}
+
+
+# ──────────────────────────────────────────────
+# Django views
+# ──────────────────────────────────────────────
+
+@method_decorator(csrf_exempt, name='dispatch')
 class SimulationView(View):
+    """API endpoint for running system dynamics simulations."""
+
+    def get(self, request):
+        """Return model metadata: variables, units, and structure."""
+        return JsonResponse({
+            'stocks': STOCKS,
+            'constants': CONSTANTS,
+            'auxiliaries': AUXILIARIES,
+            'flows': FLOWS,
+            'stock_flows': {k: v for k, v in STOCK_FLOWS.items()},
+        })
+
     def post(self, request):
-        import json
-        data = json.loads(request.body)
-        t_start = data.get('start', 0)
-        t_end = data.get('end', 100)
-        dt = data.get('dt', 0.25)
-        
-        # Initialize and run simulation
-        results = {'time': [], 'states': []}
-        return JsonResponse(results)
+        """
+        Run simulation. Accepts JSON body:
+        {
+            "start": 0,
+            "end": 100,
+            "dt": 0.25,
+            "method": "euler" | "rk4",
+            "overrides": {"variable_name": value, ...}
+        }
+        """
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            data = {}
+
+        try:
+            results = simulate(
+                t_start=float(data.get('start', 0)),
+                t_end=float(data.get('end', 100)),
+                dt=float(data.get('dt', 0.25)),
+                method=data.get('method', 'euler'),
+                overrides=data.get('overrides'),
+            )
+            return JsonResponse(results)
+        except Exception as exc:
+            return JsonResponse({'error': str(exc)}, status=400)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ModelMetaView(View):
+    """Return the list of objects and their fields for the frontend."""
+
+    def get(self, request):
+        return JsonResponse({
+            'objects': [
+                {
+                    'name': name,
+                    'stocks': [s for s, v in STOCKS.items() if v.get('object') == name],
+                    'constants': [c for c, v in CONSTANTS.items() if v.get('object') == name],
+                }
+                for name in sorted(set(
+                    v.get('object', '') for v in list(STOCKS.values()) + list(CONSTANTS.values())
+                ) - {''})
+            ],
+            'auxiliaries': list(AUXILIARIES.keys()),
+            'flows': list(FLOWS.keys()),
+        })
 `;
 
   return code;
@@ -997,10 +1243,11 @@ class SimulationView(View):
 
 function generateUrls() {
   return `from django.urls import path
-from .views import SimulationView
+from .views import SimulationView, ModelMetaView
 
 urlpatterns = [
     path('api/simulate/', SimulationView.as_view(), name='simulation'),
+    path('api/model/', ModelMetaView.as_view(), name='model-meta'),
 ]
 `;
 }
@@ -1284,38 +1531,28 @@ function runSimulation() {
   const tStart = parseFloat(document.getElementById('sim-start').value) || 0;
   const tEnd = parseFloat(document.getElementById('sim-end').value) || 100;
   const dt = parseFloat(document.getElementById('sim-dt').value) || 0.25;
-  
+  const method = document.getElementById('sim-method').value;
+
   const constMap = {};
   nodes.filter(n => n.type === 'const').forEach(n => { constMap[n.name] = parseFloat(n.eq) || 0; });
-  
+
   let stockState = {};
   stockNodes.forEach(n => { stockState[n.name] = parseFloat(n.eq) || 0; });
-  
+
   const times = [];
   const series = {};
   const tracked = nodes.filter(n => n.type !== 'const');
   tracked.forEach(n => { series[n.name] = []; });
-  
-  let t = tStart;
-  while (t <= tEnd + dt * 0.001) {
-    times.push(t);
-    const state = { ...stockState };
-    
-    // Compute aux first
+
+  // Compute a full state (aux + flow + derivatives) from a given stock state
+  function computeStep(sState) {
+    const state = { ...sState };
     nodes.filter(n => n.type === 'aux').forEach(n => {
       state[n.name] = evalExpr(n.eq, state, constMap);
     });
-    
-    // Compute flows (from edges)
     nodes.filter(n => n.type === 'flow').forEach(n => {
       state[n.name] = evalExpr(n.eq, state, constMap);
     });
-    
-    tracked.forEach(n => { series[n.name].push(state[n.name] ?? 0); });
-    
-    if (t >= tEnd) break;
-    
-    // Integration using edge equations
     const derivs = {};
     stockNodes.forEach(n => {
       const inflows = edges.filter(e => e.tgt === n.id && e.type === 'flow')
@@ -1324,8 +1561,34 @@ function runSimulation() {
         .map(e => evalExpr(e.eq, state, constMap));
       derivs[n.name] = inflows.reduce((a, b) => a + b, 0) - outflows.reduce((a, b) => a + b, 0);
     });
-    
-    stockNodes.forEach(n => { stockState[n.name] += derivs[n.name] * dt; });
+    return { state, derivs };
+  }
+
+  let t = tStart;
+  while (t <= tEnd + dt * 0.001) {
+    times.push(t);
+    const { state, derivs } = computeStep(stockState);
+    tracked.forEach(n => { series[n.name].push(state[n.name] ?? 0); });
+
+    if (t >= tEnd) break;
+
+    if (method === 'rk4') {
+      const k1 = derivs;
+      const mid1 = {};
+      stockNodes.forEach(n => { mid1[n.name] = stockState[n.name] + k1[n.name] * dt / 2; });
+      const { derivs: k2 } = computeStep(mid1);
+      const mid2 = {};
+      stockNodes.forEach(n => { mid2[n.name] = stockState[n.name] + k2[n.name] * dt / 2; });
+      const { derivs: k3 } = computeStep(mid2);
+      const end = {};
+      stockNodes.forEach(n => { end[n.name] = stockState[n.name] + k3[n.name] * dt; });
+      const { derivs: k4 } = computeStep(end);
+      stockNodes.forEach(n => {
+        stockState[n.name] += (k1[n.name] + 2*k2[n.name] + 2*k3[n.name] + k4[n.name]) * dt / 6;
+      });
+    } else {
+      stockNodes.forEach(n => { stockState[n.name] += derivs[n.name] * dt; });
+    }
     t += dt;
   }
   
