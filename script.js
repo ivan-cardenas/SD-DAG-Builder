@@ -224,9 +224,9 @@ function newModel() {
 function renderObject(obj) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('id', obj.id);
-  
+
   const isSelected = selectedType === 'object' && selectedId === obj.id;
-  
+
   const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
   rect.setAttribute('x', obj.x);
   rect.setAttribute('y', obj.y);
@@ -238,7 +238,7 @@ function renderObject(obj) {
   rect.setAttribute('stroke-width', isSelected ? 2 : 1);
   if (isSelected) rect.setAttribute('stroke-dasharray', '4 2');
   g.appendChild(rect);
-  
+
   const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   txt.textContent = obj.name;
   txt.setAttribute('x', obj.x + 8);
@@ -247,7 +247,44 @@ function renderObject(obj) {
   txt.setAttribute('font-size', '10');
   txt.setAttribute('font-weight', '500');
   g.appendChild(txt);
-  
+
+  // Resize handles — only when selected in select mode
+  if (isSelected && tool === 'select') {
+    const HS = 7, H = HS / 2;
+    const handles = [
+      { id: 'nw', hx: obj.x,             hy: obj.y,             cursor: 'nwse-resize' },
+      { id: 'n',  hx: obj.x + obj.w / 2, hy: obj.y,             cursor: 'ns-resize'   },
+      { id: 'ne', hx: obj.x + obj.w,     hy: obj.y,             cursor: 'nesw-resize'  },
+      { id: 'e',  hx: obj.x + obj.w,     hy: obj.y + obj.h / 2, cursor: 'ew-resize'   },
+      { id: 'se', hx: obj.x + obj.w,     hy: obj.y + obj.h,     cursor: 'nwse-resize' },
+      { id: 's',  hx: obj.x + obj.w / 2, hy: obj.y + obj.h,     cursor: 'ns-resize'   },
+      { id: 'sw', hx: obj.x,             hy: obj.y + obj.h,     cursor: 'nesw-resize'  },
+      { id: 'w',  hx: obj.x,             hy: obj.y + obj.h / 2, cursor: 'ew-resize'   },
+    ];
+    handles.forEach(h => {
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', h.hx - H);
+      r.setAttribute('y', h.hy - H);
+      r.setAttribute('width', HS);
+      r.setAttribute('height', HS);
+      r.setAttribute('rx', 1);
+      r.setAttribute('fill', DARK ? '#2a2a28' : 'white');
+      r.setAttribute('stroke', '#378ADD');
+      r.setAttribute('stroke-width', '1.5');
+      r.style.cursor = h.cursor;
+      r.addEventListener('mousedown', ev => {
+        ev.stopPropagation();
+        dragging = {
+          type: 'resize', obj, handle: h.id,
+          startX: ev.clientX, startY: ev.clientY,
+          startObjX: obj.x, startObjY: obj.y,
+          startObjW: obj.w, startObjH: obj.h,
+        };
+      });
+      g.appendChild(r);
+    });
+  }
+
   g.style.cursor = 'move';
   g.addEventListener('mousedown', e => onObjectMouseDown(e, obj));
   objectsLayer.appendChild(g);
@@ -653,6 +690,28 @@ window.addEventListener('mousemove', e => {
     obj.x = newX;
     obj.y = newY;
     getNodesInObject(obj.id).forEach(n => { n.x += dx; n.y += dy; });
+  } else if (dragging.type === 'resize') {
+    const { obj, handle, startX, startY, startObjX, startObjY, startObjW, startObjH } = dragging;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const MIN_W = 80, MIN_H = 60;
+
+    if (handle.includes('e')) {
+      obj.w = Math.max(MIN_W, snapGrid(startObjW + dx));
+    }
+    if (handle.includes('w')) {
+      const newW = Math.max(MIN_W, snapGrid(startObjW - dx));
+      obj.x = startObjX + startObjW - newW;
+      obj.w = newW;
+    }
+    if (handle.includes('s')) {
+      obj.h = Math.max(MIN_H, snapGrid(startObjH + dy));
+    }
+    if (handle.includes('n')) {
+      const newH = Math.max(MIN_H, snapGrid(startObjH - dy));
+      obj.y = startObjY + startObjH - newH;
+      obj.h = newH;
+    }
   } else if (dragging.type === 'node') {
     const n = dragging.node;
     n.x = e.clientX - dragOffset.x;
@@ -709,13 +768,43 @@ function openObjectModal(obj) {
       <input id="m-name" type="text" value="${obj.name}" placeholder="e.g. WaterReservoir">
       <div class="form-hint">Use PascalCase for Django model naming</div>
     </div>
+    <div class="form-row">
+      <label>Size</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:10px;color:var(--text-secondary)">W</span>
+        <input id="m-obj-w" type="number" value="${obj.w}" min="80" step="20" style="width:64px">
+        <span style="font-size:10px;color:var(--text-secondary)">H</span>
+        <input id="m-obj-h" type="number" value="${obj.h}" min="60" step="20" style="width:64px">
+      </div>
+    </div>
   `;
   document.getElementById('modal-buttons').innerHTML = `
+    <button onclick="fitObjectToContents(modalTarget);closeModal()">Fit to contents</button>
     <button onclick="closeModal()">Cancel</button>
     <button class="primary" onclick="saveModal()">Save</button>
   `;
   document.getElementById('modal-overlay').classList.add('open');
   setTimeout(() => document.getElementById('m-name').focus(), 50);
+}
+
+function fitObjectToContents(obj) {
+  const children = getNodesInObject(obj.id);
+  if (children.length === 0) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  children.forEach(n => {
+    const r = nodeRadius(n);
+    const hw = r.hw || r.r || 30;
+    const hh = r.hh || r.r || 20;
+    minX = Math.min(minX, n.x - hw - 16);
+    minY = Math.min(minY, n.y - hh - 28);
+    maxX = Math.max(maxX, n.x + hw + 16);
+    maxY = Math.max(maxY, n.y + hh + 16);
+  });
+  obj.x = minX;
+  obj.y = minY;
+  obj.w = Math.max(80, maxX - minX);
+  obj.h = Math.max(60, maxY - minY);
+  renderAll();
 }
 
 function openNodeModal(n) {
@@ -822,6 +911,10 @@ function saveModal() {
   if (modalKind === 'object') {
     const name = document.getElementById('m-name').value.trim().replace(/\s+/g, '_');
     modalTarget.name = name || modalTarget.name;
+    const wVal = parseInt(document.getElementById('m-obj-w')?.value);
+    const hVal = parseInt(document.getElementById('m-obj-h')?.value);
+    if (wVal >= 80) modalTarget.w = wVal;
+    if (hVal >= 60) modalTarget.h = hVal;
   } else if (modalKind === 'node') {
     const name = document.getElementById('m-name').value.trim().replace(/\s+/g, '_');
     modalTarget.name = name || modalTarget.name;
