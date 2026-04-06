@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>System Dynamics Builder | CrossTwin</title>
+<meta name="description" content="Visual system dynamics modeling tool with Django/GeoDjango export. Build stock-flow diagrams, validate units, run simulations, and export to Django models.">
+<meta name="keywords" content="system dynamics, stock flow diagram, Django, GeoDjango, simulation, modeling, CrossTwin">
+<meta name="author" content="Iván Cárdenas-León">
+<meta property="og:title" content="System Dynamics Builder | CrossTwin">
+<meta property="og:description" content="Visual system dynamics modeling tool with Django/GeoDjango export">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='10' y='25' width='80' height='50' rx='8' fill='%233b82f6'/><text x='50' y='58' text-anchor='middle' font-size='24' fill='white' font-weight='600'>SD</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Page Header -->
+<header id="page-header">
+  <div class="header-brand">
+    <svg class="header-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="20" width="80" height="45" rx="8" fill="#3b82f6"/>
+      <rect x="25" y="30" width="20" height="25" rx="3" fill="white" opacity="0.9"/>
+      <circle cx="65" cy="42" r="10" fill="white" opacity="0.9"/>
+      <line x1="45" y1="42" x2="55" y2="42" stroke="#22c55e" stroke-width="3"/>
+      <polygon points="52,38 58,42 52,46" fill="#22c55e"/>
+      <rect x="30" y="70" width="40" height="12" rx="3" fill="#8a9a6a"/>
+    </svg>
+    <span class="header-title">System Dynamics Builder</span>
+    <span class="header-subtitle">CrossTwin Platform</span>
+  </div>
+  <nav class="header-links">
+    <a href="https://github.com/ivan-cardenas/CrossTwin" target="_blank" rel="noopener" class="header-link">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+    <a href="https://docs.google.com/document/d/your-docs-link" target="_blank" rel="noopener" class="header-link">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M14.5 3A1.5 1.5 0 0 1 16 4.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 13.5v-9A1.5 1.5 0 0 1 1.5 3h13zm-13 1a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-13zM5 6.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zM7.25 6a.5.5 0 0 0 0 1h4.5a.5.5 0 0 0 0-1h-4.5zM5 9.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zM7.25 9a.5.5 0 0 0 0 1h4.5a.5.5 0 0 0 0-1h-4.5z"/></svg>
+      Docs
+    </a>
+  </nav>
+</header>
+
+<div id="app">
+  <div id="toolbar">
+    <span class="tb-label">Elements</span>
+    <div class="tb-group">
+      <button class="tool-btn" id="btn-object" onclick="setTool('object')" title="Container for Stocks & Constants">
+        <svg width="12" height="12"><rect x="1" y="1" width="10" height="10" rx="2" fill="none" stroke="#8a9a6a" stroke-width="1.5"/></svg>
+        Object
+      </button>
+      <button class="tool-btn" id="btn-stock" onclick="setTool('stock')" title="State variable (accumulator)">
+        <svg width="12" height="12"><rect x="1" y="2" width="10" height="8" rx="1" fill="none" stroke="#3b82f6" stroke-width="1.5"/></svg>
+        Stock
+      </button>
+      <button class="tool-btn" id="btn-const" onclick="setTool('const')" title="Fixed parameter">
+        <svg width="12" height="12"><circle cx="6" cy="5" r="3.5" fill="none" stroke="#8b5cf6" stroke-width="1.2"/><line x1="2" y1="10" x2="10" y2="10" stroke="#8b5cf6" stroke-width="1"/></svg>
+        Constant
+      </button>
+    </div>
+    <span class="tb-label">Connections</span>
+    <div class="tb-group">
+      <button class="tool-btn" id="btn-flow" onclick="setTool('flow')" title="Rate of change between stocks">
+        <svg width="12" height="12"><line x1="1" y1="6" x2="9" y2="6" stroke="#22c55e" stroke-width="1.5"/><polygon points="8,3 12,6 8,9" fill="#22c55e"/></svg>
+        Flow
+      </button>
+      <button class="tool-btn" id="btn-aux" onclick="setTool('aux')" title="Intermediate calculation">
+        <svg width="12" height="12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#f97316" stroke-width="1.5"/></svg>
+        Auxiliary
+      </button>
+      <button class="tool-btn" id="btn-link" onclick="setTool('link')" title="Causal dependency">
+        <svg width="12" height="12"><line x1="2" y1="10" x2="10" y2="2" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="2 2"/><polygon points="8,1 12,4 9,6" fill="#a1a1aa"/></svg>
+        Link
+      </button>
+    </div>
+    <div class="sep"></div>
+    <div class="tb-group">
+      <button class="tool-btn" id="btn-select" onclick="setTool('select')">
+        <svg width="12" height="12"><path d="M3 2 L3 10 L6 8 L8 11 L9.5 10 L7.5 7 L11 7 Z" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+        Select
+      </button>
+      <button class="tool-btn" onclick="deleteSelected()" title="Delete (Del)">
+        <svg width="12" height="12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.3"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.3"/></svg>
+        Delete
+      </button>
+    </div>
+    <div class="sep"></div>
+    <div class="tb-group">
+      <button class="tool-btn" onclick="zoomOut()" title="Zoom Out (Scroll Down)">
+        <svg width="12" height="12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.3"/></svg>
+      </button>
+      <span id="zoom-level" style="font-size:11px;color:var(--text-secondary);min-width:38px;text-align:center;font-weight:500;font-variant-numeric:tabular-nums">100%</span>
+      <button class="tool-btn" onclick="zoomIn()" title="Zoom In (Scroll Up)">
+        <svg width="12" height="12"><line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.3"/></svg>
+      </button>
+      <button class="tool-btn" onclick="zoomFit()" title="Fit all elements in view">
+        <svg width="12" height="12"><rect x="1" y="1" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="3.5" y="3.5" width="5" height="5" rx="0.5" fill="currentColor" opacity="0.3"/></svg>
+        Fit
+      </button>
+    </div>
+    <div class="sep"></div>
+    <button class="tool-btn" onclick="newModel()">New</button>
+    <button class="tool-btn" onclick="loadDemo()">Demo</button>
+    <div class="sep"></div>
+    <button class="tool-btn success" onclick="openRunPanel()">
+      <svg width="10" height="10"><polygon points="1,0 10,5 1,10" fill="currentColor"/></svg>
+      Run
+    </button>
+    <button class="tool-btn" onclick="validateUnits()">
+      <svg width="12" height="12"><polyline points="2,6 5,9 10,3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Validate
+    </button>
+    <div class="sep"></div>
+    <div class="tb-group">
+      <button class="tool-btn" onclick="exportJSON()" title="Save as JSON">
+        <svg width="12" height="12"><path d="M6 2v6M3 6l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        JSON
+      </button>
+      <button class="tool-btn" onclick="importJSON()" title="Load JSON file">
+        <svg width="12" height="12"><path d="M6 8V2M3 4l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Load
+      </button>
+    </div>
+    <div class="tb-group">
+      <button class="tool-btn" onclick="openDjangoImportModal()" title="Import from Django models.py">
+        <svg width="12" height="12"><path d="M6 8V2M3 4l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Django
+      </button>
+      <button class="tool-btn success" onclick="openExportModal()">
+        <svg width="12" height="12"><path d="M6 2v6M3 6l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Export
+      </button>
+      <button class="tool-btn" onclick="exportMDL()" title="Export as Vensim MDL">.mdl</button>
+    </div>
+  </div>
+
+  <div id="main-area">
+    <div id="canvas-wrap">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M1 1L9 5L1 9" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
+          </marker>
+          <marker id="arr-flow-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M1 1L9 5L1 9" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+          </marker>
+          <marker id="arr-link" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M1 1L9 5L1 9" fill="none" stroke="#a1a1aa" stroke-width="1.5" stroke-linecap="round"/>
+          </marker>
+          <marker id="arr-link-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M1 1L9 5L1 9" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+          </marker>
+        </defs>
+        <g id="grid-layer"></g>
+        <g id="objects-layer"></g>
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+        <g id="preview-layer"></g>
+      </svg>
+    </div>
+
+    <div id="side-panel">
+      <div class="panel-section">
+        <div class="panel-title">Unit Validation <button class="tool-btn" style="padding:3px 8px;font-size:10px" onclick="validateUnits()">Run</button></div>
+        <div id="validation-list" class="panel-content">
+          <div class="validation-item success"><span class="validation-icon">&#10003;</span> Click "Run" to validate</div>
+        </div>
+      </div>
+      <div class="panel-title" style="padding:14px 16px 0">Model Structure</div>
+      <div id="objects-tree"></div>
+    </div>
+  </div>
+
+  <div id="run-panel">
+    <div id="run-header">
+      <span style="font-size:12px;font-weight:600;letter-spacing:-0.01em">Simulation</span>
+      <label>Start <input type="number" id="sim-start" value="0" min="0"></label>
+      <label>End <input type="number" id="sim-end" value="100" min="1"></label>
+      <label>dt <input type="number" id="sim-dt" value="0.25" min="0.01" step="0.01"></label>
+      <label>Method <select id="sim-method"><option value="euler">Euler</option><option value="rk4" selected>RK4</option></select></label>
+      <button class="tool-btn success" onclick="runSimulation()" style="padding:4px 10px">
+        <svg width="10" height="10"><polygon points="1,0 10,5 1,10" fill="currentColor"/></svg>
+        Run
+      </button>
+      <button id="run-close" onclick="closeRunPanel()">&#10005;</button>
+    </div>
+    <div id="run-error"></div>
+    <div id="run-body">
+      <div id="run-chart-wrap"><canvas id="sim-chart"></canvas></div>
+      <div id="run-sidebar">
+        <div class="side-title">Variables</div>
+        <div id="var-toggles"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span id="status-tool">Tool: Object</span>
+    <span id="status-hint">Click canvas to place &bull; Double-click to edit &bull; Drag to move &bull; Scroll to zoom &bull; Ctrl+drag to pan</span>
+  </div>
+</div>
+
+<!-- Page Footer -->
+<footer id="page-footer">
+  <div class="footer-left">
+    <span>&copy; 2024-2026 Iv&aacute;n C&aacute;rdenas-Le&oacute;n</span>
+    <span>&middot;</span>
+    <span>University of Twente, Faculty ITC</span>
+    <span>&middot;</span>
+    <a href="https://github.com/ivan-cardenas/CrossTwin/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
+  </div>
+  <div class="footer-right">
+    <span class="footer-badge">v1.0.0</span>
+    <a href="https://github.com/ivan-cardenas/CrossTwin/issues" target="_blank" rel="noopener" class="footer-link">Report Issue</a>
+    <a href="mailto:i.cardenasleon@utwente.nl" class="footer-link">Contact</a>
+  </div>
+</footer>
+
+<!-- Modal -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h3 id="modal-title">Edit Element</h3>
+    <div id="modal-body"></div>
+    <div id="modal-buttons" class="modal-btns">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="saveModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

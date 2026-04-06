@@ -8,11 +8,11 @@ const previewLayer = document.getElementById('preview-layer');
 const DARK = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
 const COLORS = {
-  object: { fill: DARK ? '#2a3020' : '#f0f4e8', stroke: DARK ? '#6a7a50' : '#8a9a6a', text: DARK ? '#a8b890' : '#4a5a3a' },
-  stock: { fill: DARK ? '#0c2e50' : '#e6f1fb', stroke: '#378ADD', text: DARK ? '#85b7eb' : '#0c447c' },
-  flow: { fill: DARK ? '#152a05' : '#eaf3de', stroke: '#639922', text: DARK ? '#97c459' : '#27500a' },
-  aux: { fill: DARK ? '#3d1e10' : '#faece7', stroke: '#D85A30', text: DARK ? '#f0997b' : '#712b13' },
-  const: { fill: DARK ? '#22195a' : '#eeedfe', stroke: '#7F77DD', text: DARK ? '#afa9ec' : '#3c3489' }
+  object: { fill: DARK ? '#22261c' : '#f5f7f0', stroke: DARK ? '#6a7a50' : '#8a9a6a', text: DARK ? '#a8b890' : '#4a5a3a' },
+  stock: { fill: DARK ? '#172554' : '#eff6ff', stroke: '#3b82f6', text: DARK ? '#93bbfd' : '#1d4ed8' },
+  flow: { fill: DARK ? '#14280b' : '#f0fdf4', stroke: '#22c55e', text: DARK ? '#86efac' : '#15803d' },
+  aux: { fill: DARK ? '#431407' : '#fff7ed', stroke: '#f97316', text: DARK ? '#fdba74' : '#c2410c' },
+  const: { fill: DARK ? '#2e1065' : '#f5f3ff', stroke: '#8b5cf6', text: DARK ? '#c4b5fd' : '#6d28d9' }
 };
 
 let tool = 'object';
@@ -201,7 +201,7 @@ function drawPreviewLine(x1, y1, x2, y2) {
   line.setAttribute('y1', y1);
   line.setAttribute('x2', x2);
   line.setAttribute('y2', y2);
-  line.setAttribute('stroke', tool === 'flow' ? '#639922' : '#888');
+  line.setAttribute('stroke', tool === 'flow' ? '#22c55e' : '#a1a1aa');
   line.setAttribute('stroke-width', '1.5');
   line.setAttribute('stroke-dasharray', '6 3');
   line.setAttribute('opacity', '0.6');
@@ -249,9 +249,9 @@ function renderObject(obj) {
   rect.setAttribute('y', obj.y);
   rect.setAttribute('width', obj.w);
   rect.setAttribute('height', obj.h);
-  rect.setAttribute('rx', 8);
+  rect.setAttribute('rx', 10);
   rect.setAttribute('fill', COLORS.object.fill);
-  rect.setAttribute('stroke', isSelected ? '#378ADD' : COLORS.object.stroke);
+  rect.setAttribute('stroke', isSelected ? '#3b82f6' : COLORS.object.stroke);
   rect.setAttribute('stroke-width', isSelected ? 2 : 1);
   if (isSelected) rect.setAttribute('stroke-dasharray', '4 2');
   g.appendChild(rect);
@@ -262,7 +262,8 @@ function renderObject(obj) {
   txt.setAttribute('y', obj.y + 14);
   txt.setAttribute('fill', COLORS.object.text);
   txt.setAttribute('font-size', '10');
-  txt.setAttribute('font-weight', '500');
+  txt.setAttribute('font-weight', '600');
+  txt.setAttribute('font-family', "'Inter', system-ui, sans-serif");
   g.appendChild(txt);
   
   g.style.cursor = 'move';
@@ -282,9 +283,9 @@ function renderNode(n) {
     rect.setAttribute('y', n.y - 20);
     rect.setAttribute('width', 88);
     rect.setAttribute('height', 40);
-    rect.setAttribute('rx', 4);
+    rect.setAttribute('rx', 6);
     rect.setAttribute('fill', c.fill);
-    rect.setAttribute('stroke', isSelected ? '#fff' : c.stroke);
+    rect.setAttribute('stroke', isSelected ? '#3b82f6' : c.stroke);
     rect.setAttribute('stroke-width', isSelected ? 2 : 1.5);
     g.appendChild(rect);
   } else if (n.type === 'flow') {
@@ -293,9 +294,9 @@ function renderNode(n) {
     rect.setAttribute('y', n.y - 16);
     rect.setAttribute('width', 56);
     rect.setAttribute('height', 32);
-    rect.setAttribute('rx', 3);
+    rect.setAttribute('rx', 6);
     rect.setAttribute('fill', c.fill);
-    rect.setAttribute('stroke', isSelected ? '#fff' : c.stroke);
+    rect.setAttribute('stroke', isSelected ? '#3b82f6' : c.stroke);
     rect.setAttribute('stroke-width', 1.5);
     rect.setAttribute('stroke-dasharray', '4 2');
     g.appendChild(rect);
@@ -305,7 +306,7 @@ function renderNode(n) {
     circle.setAttribute('cy', n.y);
     circle.setAttribute('r', 22);
     circle.setAttribute('fill', c.fill);
-    circle.setAttribute('stroke', isSelected ? '#fff' : c.stroke);
+    circle.setAttribute('stroke', isSelected ? '#3b82f6' : c.stroke);
     circle.setAttribute('stroke-width', 1.5);
     g.appendChild(circle);
   } else {
@@ -314,7 +315,7 @@ function renderNode(n) {
     circle.setAttribute('cy', n.y);
     circle.setAttribute('r', 18);
     circle.setAttribute('fill', c.fill);
-    circle.setAttribute('stroke', isSelected ? '#fff' : c.stroke);
+    circle.setAttribute('stroke', isSelected ? '#3b82f6' : c.stroke);
     circle.setAttribute('stroke-width', 1);
     g.appendChild(circle);
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -336,6 +337,8 @@ function renderNode(n) {
   txt.setAttribute('dominant-baseline', 'middle');
   txt.setAttribute('fill', c.text);
   txt.setAttribute('font-size', n.type === 'const' ? '9' : '10');
+  txt.setAttribute('font-family', "'Inter', system-ui, sans-serif");
+  txt.setAttribute('font-weight', '500');
   txt.style.pointerEvents = 'none';
   g.appendChild(txt);
   
@@ -348,8 +351,8 @@ function renderNode(n) {
     eqTxt.setAttribute('text-anchor', 'middle');
     eqTxt.setAttribute('fill', c.text);
     eqTxt.setAttribute('font-size', '8');
-    eqTxt.setAttribute('font-family', 'monospace');
-    eqTxt.setAttribute('opacity', '0.7');
+    eqTxt.setAttribute('font-family', "'SF Mono', 'Cascadia Code', 'Fira Code', monospace");
+    eqTxt.setAttribute('opacity', '0.6');
     eqTxt.style.pointerEvents = 'none';
     g.appendChild(eqTxt);
   }
@@ -387,7 +390,7 @@ function renderEdge(e) {
     line.setAttribute('y1', p1.y);
     line.setAttribute('x2', p2.x);
     line.setAttribute('y2', p2.y);
-    line.setAttribute('stroke', isSelected ? '#378ADD' : '#639922');
+    line.setAttribute('stroke', isSelected ? '#3b82f6' : '#22c55e');
     line.setAttribute('stroke-width', isSelected ? 3 : 2.5);
     line.setAttribute('marker-end', isSelected ? 'url(#arr-flow-sel)' : 'url(#arr-flow)');
     g.appendChild(line);
@@ -400,9 +403,9 @@ function renderEdge(e) {
       label.setAttribute('x', mx);
       label.setAttribute('y', my - 6);
       label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('fill', DARK ? '#97c459' : '#27500a');
+      label.setAttribute('fill', DARK ? '#86efac' : '#15803d');
       label.setAttribute('font-size', '9');
-      label.setAttribute('font-family', 'monospace');
+      label.setAttribute('font-family', "'SF Mono', 'Cascadia Code', 'Fira Code', monospace");
       label.style.pointerEvents = 'none';
       g.appendChild(label);
     }
@@ -421,7 +424,7 @@ function renderEdge(e) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', `M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}`);
     path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', isSelected ? '#378ADD' : (DARK ? '#9c9a92' : '#888'));
+    path.setAttribute('stroke', isSelected ? '#3b82f6' : (DARK ? '#71717a' : '#a1a1aa'));
     path.setAttribute('stroke-width', isSelected ? 2 : 1);
     path.setAttribute('stroke-dasharray', '4 3');
     path.setAttribute('marker-end', isSelected ? 'url(#arr-link-sel)' : 'url(#arr-link)');
@@ -497,7 +500,7 @@ function updateTree() {
       const tgt = nodes.find(n => n.id === e.tgt);
       const item = document.createElement('div');
       item.className = 'tree-standalone' + (selectedType === 'edge' && selectedId === e.id ? ' selected' : '');
-      item.innerHTML = `<span style="color:${e.type === 'flow' ? '#639922' : '#888'}">${e.type === 'flow' ? '→' : '⤳'}</span> ${src?.name || '?'} → ${tgt?.name || '?'}`;
+      item.innerHTML = `<span style="color:${e.type === 'flow' ? '#22c55e' : '#a1a1aa'}">${e.type === 'flow' ? '→' : '⤳'}</span> ${src?.name || '?'} → ${tgt?.name || '?'}`;
       item.onclick = () => selectEdge(e);
       tree.appendChild(item);
     });
@@ -1740,7 +1743,7 @@ function runSimulation() {
   drawChart(times, series, tracked);
 }
 
-const SIM_COLORS = ['#378ADD', '#639922', '#D85A30', '#7F77DD', '#1D9E75', '#BA7517', '#D4537E'];
+const SIM_COLORS = ['#3b82f6', '#22c55e', '#f97316', '#8b5cf6', '#06b6d4', '#eab308', '#ec4899'];
 
 function buildVarToggles(tracked) {
   const container = document.getElementById('var-toggles');
@@ -1782,8 +1785,8 @@ function drawChart(times, series, tracked) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { maxTicksLimit: 8, font: { size: 9 } }, grid: { color: DARK ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' } },
-        y: { ticks: { maxTicksLimit: 6, font: { size: 9 } }, grid: { color: DARK ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' } }
+        x: { ticks: { maxTicksLimit: 8, font: { size: 10, family: "'Inter', system-ui, sans-serif" }, color: DARK ? '#71717a' : '#a1a1aa' }, grid: { color: DARK ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } },
+        y: { ticks: { maxTicksLimit: 6, font: { size: 10, family: "'Inter', system-ui, sans-serif" }, color: DARK ? '#71717a' : '#a1a1aa' }, grid: { color: DARK ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } }
       }
     }
   });
