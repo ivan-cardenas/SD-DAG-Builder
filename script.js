@@ -836,7 +836,17 @@ window.addEventListener('mousemove', e => {
   if (!dragging) return;
 
   const pos = getCanvasPos(e);
-  if (dragging.type === 'object') {
+  if (dragging.type === 'app') {
+    const app = dragging.app;
+    const newX = pos.x - dragOffset.x;
+    const newY = pos.y - dragOffset.y;
+    const dx = newX - app.x, dy = newY - app.y;
+    app.x = newX; app.y = newY;
+    getObjectsInApp(app.id).forEach(o => {
+      o.x += dx; o.y += dy;
+      getNodesInObject(o.id).forEach(n => { n.x += dx; n.y += dy; });
+    });
+  } else if (dragging.type === 'object') {
     const obj = dragging.obj;
     const newX = pos.x - dragOffset.x;
     const newY = pos.y - dragOffset.y;
