@@ -4,8 +4,9 @@
     {
       "name": "Static Dev Server (Python)",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "."],
-      "port": 8080
+      "runtimeArgs": ["-m", "http.server", "8080"],
+      "port": 8080,
+      "url": "http://localhost:8080/app.html"
     }
   ]
 }

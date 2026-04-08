@@ -31,6 +31,8 @@
   --shadow-md: 0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
   --shadow-xl: 0 16px 48px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.06);
+  --app-fill: #f0fdfa;
+  --app-stroke: #0d9488;
   --object-fill: #f5f7f0;
   --object-stroke: #8a9a6a;
   --radius-sm: 6px;
@@ -71,6 +73,8 @@
     --shadow-md: 0 2px 8px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
     --shadow-lg: 0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
     --shadow-xl: 0 16px 48px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3);
+    --app-fill: #042f2e;
+    --app-stroke: #0d9488;
     --object-fill: #22261c;
     --object-stroke: #6a7a50;
   }

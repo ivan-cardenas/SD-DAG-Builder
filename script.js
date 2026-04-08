@@ -114,14 +114,15 @@ function resizeAppToFit(app) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   children.forEach(o => {
     minX = Math.min(minX, o.x - 20);
-    minY = Math.min(minY, o.y - 32);
+    minY = Math.min(minY, o.y - 32); // 32 leaves room for the label badge
     maxX = Math.max(maxX, o.x + o.w + 20);
     maxY = Math.max(maxY, o.y + o.h + 20);
   });
-  app.x = Math.min(app.x, minX);
-  app.y = Math.min(app.y, minY);
-  app.w = Math.max(app.w, maxX - app.x);
-  app.h = Math.max(app.h, maxY - app.y);
+  // Exact fit — shrinks as well as grows
+  app.x = minX;
+  app.y = minY;
+  app.w = maxX - minX;
+  app.h = maxY - minY;
 }
 
 // Object functions
@@ -152,16 +153,17 @@ function resizeObjectToFit(obj) {
   children.forEach(n => {
     const r = nodeRadius(n);
     const hw = r.hw || r.r || 30;
-    const hh = r.hh || r.r || 20;
+    const hh = r.hh || r.r || 22;
     minX = Math.min(minX, n.x - hw - 10);
-    minY = Math.min(minY, n.y - hh - 25);
+    minY = Math.min(minY, n.y - hh - 24); // 24 = label row above node
     maxX = Math.max(maxX, n.x + hw + 10);
-    maxY = Math.max(maxY, n.y + hh + 10);
+    maxY = Math.max(maxY, n.y + hh + 14);
   });
-  obj.x = Math.min(obj.x, minX);
-  obj.y = Math.min(obj.y, minY);
-  obj.w = Math.max(obj.w, maxX - obj.x);
-  obj.h = Math.max(obj.h, maxY - obj.y);
+  // Exact fit — shrinks as well as grows; enforce minimum size
+  obj.x = minX;
+  obj.y = minY;
+  obj.w = Math.max(120, maxX - minX);
+  obj.h = Math.max(80, maxY - minY);
 }
 
 // Node functions
@@ -588,45 +590,59 @@ function renderEdge(e) {
   edgesLayer.appendChild(g);
 }
 
+function makeTreeObject(obj) {
+  const div = document.createElement('div');
+  div.className = 'tree-object';
+  const header = document.createElement('div');
+  header.className = 'tree-object-header';
+  header.innerHTML = `<svg width="10" height="10"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="none" stroke="${COLORS.object.stroke}" stroke-width="1.2"/></svg> ${obj.name}`;
+  header.onclick = () => selectObject(obj);
+  div.appendChild(header);
+  const children = document.createElement('div');
+  children.className = 'tree-children';
+  getNodesInObject(obj.id).forEach(n => {
+    const item = document.createElement('div');
+    item.className = 'tree-item' + (selectedType === 'node' && selectedId === n.id ? ' selected' : '');
+    item.innerHTML = `<span class="tree-item-dot" style="background:${COLORS[n.type].stroke}"></span> ${n.name}`;
+    item.onclick = () => selectNode(n);
+    children.appendChild(item);
+  });
+  div.appendChild(children);
+  return div;
+}
+
 function updateTree() {
   const tree = document.getElementById('objects-tree');
   tree.innerHTML = '';
-  
-  objects.forEach(obj => {
-    const div = document.createElement('div');
-    div.className = 'tree-object';
-    
-    const header = document.createElement('div');
-    header.className = 'tree-object-header';
-    header.innerHTML = `<svg width="10" height="10"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="none" stroke="${COLORS.object.stroke}" stroke-width="1.2"/></svg> ${obj.name}`;
-    header.onclick = () => selectObject(obj);
-    div.appendChild(header);
-    
-    const children = document.createElement('div');
-    children.className = 'tree-children';
-    getNodesInObject(obj.id).forEach(n => {
-      const item = document.createElement('div');
-      item.className = 'tree-item' + (selectedType === 'node' && selectedId === n.id ? ' selected' : '');
-      item.innerHTML = `<span class="tree-item-dot" style="background:${COLORS[n.type].stroke}"></span> ${n.name}`;
-      item.onclick = () => selectNode(n);
-      children.appendChild(item);
-    });
-    div.appendChild(children);
-    tree.appendChild(div);
+
+  // Apps and their objects
+  apps.forEach(app => {
+    const appDiv = document.createElement('div');
+    appDiv.style.cssText = 'margin-bottom:8px;border:1.5px solid ' + COLORS.app.stroke + ';border-radius:10px;overflow:hidden;';
+    const appHeader = document.createElement('div');
+    appHeader.style.cssText = `padding:7px 10px;background:${COLORS.app.fill};border-bottom:1px solid ${COLORS.app.stroke};font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;color:${COLORS.app.text}`;
+    appHeader.innerHTML = `<svg width="10" height="10"><rect x="0" y="2" width="10" height="8" rx="2" fill="none" stroke="${COLORS.app.stroke}" stroke-width="1.5"/><rect x="3" y="0" width="4" height="3" rx="1" fill="${COLORS.app.stroke}"/></svg> ${app.name}`;
+    appHeader.onclick = () => selectApp(app);
+    appDiv.appendChild(appHeader);
+    const appChildren = document.createElement('div');
+    appChildren.style.cssText = 'padding:4px;';
+    getObjectsInApp(app.id).forEach(obj => appChildren.appendChild(makeTreeObject(obj)));
+    appDiv.appendChild(appChildren);
+    tree.appendChild(appDiv);
   });
-  
+
+  // Objects not in any app
+  objects.filter(o => !o.appId).forEach(obj => tree.appendChild(makeTreeObject(obj)));
+
   // Standalone nodes
-  const standalone = nodes.filter(n => !n.objectId);
-  if (standalone.length > 0) {
-    standalone.forEach(n => {
-      const item = document.createElement('div');
-      item.className = 'tree-standalone' + (selectedType === 'node' && selectedId === n.id ? ' selected' : '');
-      item.innerHTML = `<span class="tree-item-dot" style="background:${COLORS[n.type].stroke}"></span> ${n.name}`;
-      item.onclick = () => selectNode(n);
-      tree.appendChild(item);
-    });
-  }
-  
+  nodes.filter(n => !n.objectId).forEach(n => {
+    const item = document.createElement('div');
+    item.className = 'tree-standalone' + (selectedType === 'node' && selectedId === n.id ? ' selected' : '');
+    item.innerHTML = `<span class="tree-item-dot" style="background:${COLORS[n.type].stroke}"></span> ${n.name}`;
+    item.onclick = () => selectNode(n);
+    tree.appendChild(item);
+  });
+
   // Edges section
   if (edges.length > 0) {
     const edgeSection = document.createElement('div');
@@ -635,7 +651,6 @@ function updateTree() {
     edgeSection.style.cursor = 'default';
     edgeSection.innerHTML = `<strong style="font-size:9px;color:var(--text-secondary)">CONNECTIONS (${edges.length})</strong>`;
     tree.appendChild(edgeSection);
-    
     edges.forEach(e => {
       const src = nodes.find(n => n.id === e.src);
       const tgt = nodes.find(n => n.id === e.tgt);
@@ -821,7 +836,13 @@ canvas.addEventListener('click', e => {
   } else if (tool === 'stock' || tool === 'const') {
     const obj = getObjectAt(sx, sy);
     const n = createNode(tool, sx, sy, obj?.id);
-    if (obj) resizeObjectToFit(obj);
+    if (obj) {
+      resizeObjectToFit(obj);
+      if (obj.appId) {
+        const parentApp = apps.find(a => a.id === obj.appId);
+        if (parentApp) resizeAppToFit(parentApp);
+      }
+    }
     renderAll();
     selectNode(n);
     openNodeModal(n);
@@ -862,6 +883,11 @@ window.addEventListener('mousemove', e => {
     obj.x = newX;
     obj.y = newY;
     getNodesInObject(obj.id).forEach(n => { n.x += dx; n.y += dy; });
+    // Resize parent app to track the moved object
+    if (obj.appId) {
+      const parentApp = apps.find(a => a.id === obj.appId);
+      if (parentApp) resizeAppToFit(parentApp);
+    }
   } else if (dragging.type === 'node') {
     const n = dragging.node;
     n.x = pos.x - dragOffset.x;
@@ -870,6 +896,11 @@ window.addEventListener('mousemove', e => {
     if ((n.type === 'stock' || n.type === 'const') && obj) {
       n.objectId = obj.id;
       resizeObjectToFit(obj);
+      // Resize parent app to track the resized object
+      if (obj.appId) {
+        const parentApp = apps.find(a => a.id === obj.appId);
+        if (parentApp) resizeAppToFit(parentApp);
+      }
     } else if (n.type === 'stock' || n.type === 'const') {
       n.objectId = null;
     }
@@ -940,11 +971,17 @@ function zoomOut() {
 }
 
 function zoomFit() {
-  if (nodes.length === 0 && objects.length === 0) {
+  if (nodes.length === 0 && objects.length === 0 && apps.length === 0) {
     viewBox = { x: 0, y: 0, w: 1400, h: 900 };
     currentZoom = 1;
   } else {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    apps.forEach(a => {
+      minX = Math.min(minX, a.x);
+      minY = Math.min(minY, a.y - 14); // account for label badge
+      maxX = Math.max(maxX, a.x + a.w);
+      maxY = Math.max(maxY, a.y + a.h);
+    });
     objects.forEach(o => {
       minX = Math.min(minX, o.x);
       minY = Math.min(minY, o.y);
@@ -1003,6 +1040,17 @@ window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
   if (e.key === 'Escape') { deselectAll(); linkStart = null; closeModal(); }
+  if (e.key === 'a' || e.key === 'A') setTool('app');
+  if (e.key === 'o' || e.key === 'O') setTool('object');
+  if (e.key === 's' || e.key === 'S') setTool('stock');
+  if (e.key === 'c' || e.key === 'C') setTool('const');
+  if (e.key === 'x' || e.key === 'X') setTool('aux');
+  if (e.key === 'f' || e.key === 'F') setTool('flow');
+  if (e.key === 'l' || e.key === 'L') setTool('link');
+  if (e.key === 'v' || e.key === 'V') setTool('select');
+  if (e.key === '+' || e.key === '=') zoomIn();
+  if (e.key === '-') zoomOut();
+  if (e.key === '0') zoomFit();
 });
 
 // Build variable chips HTML
@@ -1028,16 +1076,51 @@ function insertVariable(name) {
 }
 
 // Modals
+function openAppModal(app) {
+  modalTarget = app;
+  modalKind = 'app';
+  document.getElementById('modal-title').textContent = 'Edit Django App';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-hint" style="margin-bottom:10px">
+      An App groups related Django Models. It maps to a Django app folder (e.g. <code>myapp/</code>).
+    </div>
+    <div class="form-row">
+      <label>App Name</label>
+      <input id="m-name" type="text" value="${app.name}" placeholder="e.g. reservoir_app">
+      <div class="form-hint">Use snake_case — this becomes the Django app name</div>
+    </div>
+  `;
+  document.getElementById('modal-buttons').innerHTML = `
+    <button onclick="closeModal()">Cancel</button>
+    <button class="primary" onclick="saveModal()">Save</button>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('m-name').focus(), 50);
+}
+
 function openObjectModal(obj) {
   modalTarget = obj;
   modalKind = 'object';
-  document.getElementById('modal-title').textContent = 'Edit Object';
+  const appOptions = apps.map(a =>
+    `<option value="${a.id}" ${obj.appId === a.id ? 'selected' : ''}>${a.name}</option>`
+  ).join('');
+  document.getElementById('modal-title').textContent = 'Edit Object (Django Model)';
   document.getElementById('modal-body').innerHTML = `
     <div class="form-row">
       <label>Name (Django Model Name)</label>
       <input id="m-name" type="text" value="${obj.name}" placeholder="e.g. WaterReservoir">
       <div class="form-hint">Use PascalCase for Django model naming</div>
     </div>
+    ${apps.length ? `
+    <div class="form-row">
+      <label>Django App</label>
+      <select id="m-app-id">
+        <option value="">— No app (standalone) —</option>
+        ${appOptions}
+      </select>
+      <div class="form-hint">Assign to a Django App for organized code generation</div>
+    </div>
+    ` : ''}
   `;
   document.getElementById('modal-buttons').innerHTML = `
     <button onclick="closeModal()">Cancel</button>
@@ -1148,9 +1231,17 @@ function closeModal() {
 function saveModal() {
   if (!modalTarget) return;
   
-  if (modalKind === 'object') {
+  if (modalKind === 'app') {
     const name = document.getElementById('m-name').value.trim().replace(/\s+/g, '_');
     modalTarget.name = name || modalTarget.name;
+  } else if (modalKind === 'object') {
+    const name = document.getElementById('m-name').value.trim().replace(/\s+/g, '_');
+    modalTarget.name = name || modalTarget.name;
+    const appSel = document.getElementById('m-app-id');
+    if (appSel) {
+      modalTarget.appId = appSel.value || null;
+      if (modalTarget.appId) resizeAppToFit(apps.find(a => a.id === modalTarget.appId));
+    }
   } else if (modalKind === 'node') {
     const name = document.getElementById('m-name').value.trim().replace(/\s+/g, '_');
     modalTarget.name = name || modalTarget.name;
@@ -1230,6 +1321,7 @@ function openExportModal() {
       <button class="export-tab active" onclick="showExportTab(this, 'models')">models.py</button>
       <button class="export-tab" onclick="showExportTab(this, 'views')">views.py</button>
       <button class="export-tab" onclick="showExportTab(this, 'urls')">urls.py</button>
+      <button class="export-tab" onclick="showExportTab(this, 'apps')">apps.py</button>
     </div>
     <div id="export-content">${generateModels()}</div>
   `;
@@ -1244,45 +1336,62 @@ function openExportModal() {
 function showExportTab(btn, tab) {
   document.querySelectorAll('.export-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('export-content').textContent = { models: generateModels, views: generateViews, urls: generateUrls }[tab]();
+  document.getElementById('export-content').textContent = { models: generateModels, views: generateViews, urls: generateUrls, apps: generateAppsConfig }[tab]();
 }
 
 function generateModels() {
-  let code = `from django.contrib.gis.db import models
+  const header = `from django.contrib.gis.db import models\n\nclass SystemDynamicsBase(models.Model):\n    """Base class for all system dynamics objects"""\n    name = models.CharField(max_length=100)\n    geometry = models.PointField(null=True, blank=True, srid=4326)\n    created_at = models.DateTimeField(auto_now_add=True)\n    updated_at = models.DateTimeField(auto_now=True)\n\n    class Meta:\n        abstract = True\n\n`;
 
-class SystemDynamicsBase(models.Model):
-    """Base class for all system dynamics objects"""
-    name = models.CharField(max_length=100)
-    geometry = models.PointField(null=True, blank=True, srid=4326)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        abstract = True
-
-`;
-
-  objects.forEach(obj => {
+  function modelBlock(obj) {
     const children = getNodesInObject(obj.id);
     const stocks = children.filter(n => n.type === 'stock');
     const consts = children.filter(n => n.type === 'const');
-    
-    code += `class ${obj.name}(SystemDynamicsBase):
-    """${obj.name} - System Dynamics Object"""
-`;
+    const parentApp = apps.find(a => a.id === obj.appId);
+    let block = `class ${obj.name}(SystemDynamicsBase):\n    """${obj.name} - System Dynamics Model${parentApp ? ' | App: ' + parentApp.name : ''}"""\n`;
     stocks.forEach(s => {
-      code += `    ${s.name.toLowerCase()} = models.FloatField(default=${s.eq || 0}, help_text='Stock: ${s.units || 'units'}')\n`;
+      block += `    ${s.name} = models.FloatField(default=${s.eq || 0}, help_text='Stock: ${s.units || 'units'}')\n`;
     });
     consts.forEach(c => {
-      code += `    ${c.name.toLowerCase()} = models.FloatField(default=${c.eq || 0}, help_text='Constant: ${c.units || 'units'}')\n`;
+      block += `    ${c.name} = models.FloatField(default=${c.eq || 0}, help_text='Constant: ${c.units || 'units'}')\n`;
     });
-    code += `
-    class Meta:
-        verbose_name = '${obj.name}'
+    block += `\n    class Meta:\n        verbose_name = '${obj.name}'\n\n`;
+    return block;
+  }
 
-`;
+  let code = header;
+
+  // Group by app
+  apps.forEach(app => {
+    const appObjs = getObjectsInApp(app.id);
+    if (appObjs.length === 0) return;
+    code += `# ─── App: ${app.name} ${'─'.repeat(Math.max(0, 40 - app.name.length))}\n\n`;
+    appObjs.forEach(obj => { code += modelBlock(obj); });
   });
 
+  // Standalone objects (no app)
+  const standalone = objects.filter(o => !o.appId);
+  if (standalone.length > 0) {
+    if (apps.length > 0) code += `# ─── Standalone Models ${'─'.repeat(19)}\n\n`;
+    standalone.forEach(obj => { code += modelBlock(obj); });
+  }
+
+  return code;
+}
+
+function generateAppsConfig() {
+  if (apps.length === 0) {
+    return '# No Django Apps defined.\n# Use the App tool to create app containers, then assign Objects to them.\n';
+  }
+  let code = '';
+  apps.forEach(app => {
+    const className = app.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('') + 'Config';
+    code += `# ${app.name}/apps.py\nfrom django.apps import AppConfig\n\nclass ${className}(AppConfig):\n    default_auto_field = 'django.db.models.BigAutoField'\n    name = '${app.name}'\n    verbose_name = '${app.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}'\n\n`;
+  });
+  code += `# settings.py — add to INSTALLED_APPS:\n# [\n`;
+  apps.forEach(app => {
+    code += `#     '${app.name}',\n`;
+  });
+  code += `# ]\n`;
   return code;
 }
 
@@ -1589,7 +1698,8 @@ function downloadExport() {
   [
     { name: 'models.py', content: generateModels() },
     { name: 'views.py', content: generateViews() },
-    { name: 'urls.py', content: generateUrls() }
+    { name: 'urls.py', content: generateUrls() },
+    { name: 'apps.py', content: generateAppsConfig() }
   ].forEach(f => {
     const blob = new Blob([f.content], { type: 'text/plain' });
     const a = document.createElement('a');
@@ -1680,7 +1790,7 @@ function parseDjangoModels(code) {
     const y = START_Y + row * (objH + GAP_Y);
 
     const objId = genId();
-    const obj = { id: objId, name: cls.name, x, y, w: OBJ_W, h: objH };
+    const obj = { id: objId, name: cls.name, x, y, w: OBJ_W, h: objH, appId: null };
     importedObjects.push(obj);
 
     let nodeY = y + 45;
@@ -1736,6 +1846,7 @@ function confirmDjangoImport() {
     return;
   }
   if (mode === 'replace') {
+    apps = [];
     objects = result.objects;
     nodes = result.nodes;
     edges = result.edges;
@@ -1750,7 +1861,7 @@ function confirmDjangoImport() {
 
 // JSON Export/Import
 function exportJSON() {
-  const data = { objects, nodes, edges, idCounter };
+  const data = { apps, objects, nodes, edges, idCounter };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1767,6 +1878,7 @@ function importJSON() {
     reader.onload = ev => {
       try {
         const data = JSON.parse(ev.target.result);
+        apps = data.apps || [];
         objects = data.objects || [];
         nodes = data.nodes || [];
         edges = data.edges || [];
@@ -2003,18 +2115,19 @@ function drawGrid() {
 
 // Demo
 function loadDemo() {
-  objects = [{ id: 'o1', name: 'WaterReservoir', x: 100, y: 80, w: 200, h: 160 }];
+  apps = [{ id: 'a1', name: 'water_management', x: 60, y: 40, w: 320, h: 260 }];
+  objects = [{ id: 'o1', name: 'WaterReservoir', x: 90, y: 80, w: 220, h: 180, appId: 'a1' }];
   nodes = [
-    { id: 'n1', type: 'stock', name: 'volume', eq: '1000', units: 'm3', x: 200, y: 160, objectId: 'o1' },
-    { id: 'n2', type: 'const', name: 'max_capacity', eq: '5000', units: 'm3', x: 200, y: 200, objectId: 'o1' },
-    { id: 'n5', type: 'aux', name: 'rainfall_rate', eq: '50', units: 'm3/day', x: 450, y: 100, objectId: null },
-    { id: 'n6', type: 'aux', name: 'demand_rate', eq: '30', units: 'm3/day', x: 450, y: 220, objectId: null }
+    { id: 'n1', type: 'stock', name: 'volume', eq: '1000', units: 'm3', x: 200, y: 155, objectId: 'o1' },
+    { id: 'n2', type: 'const', name: 'max_capacity', eq: '5000', units: 'm3', x: 200, y: 215, objectId: 'o1' },
+    { id: 'n5', type: 'aux', name: 'rainfall_rate', eq: '50', units: 'm3/day', x: 490, y: 110, objectId: null },
+    { id: 'n6', type: 'aux', name: 'demand_rate', eq: '30', units: 'm3/day', x: 490, y: 230, objectId: null }
   ];
   edges = [
     { id: 'e1', type: 'flow', src: 'n5', tgt: 'n1', eq: 'rainfall_rate', units: 'm3/day' },
     { id: 'e2', type: 'flow', src: 'n1', tgt: 'n6', eq: 'demand_rate', units: 'm3/day' }
   ];
-  idCounter = 6;
+  idCounter = 7;
   renderAll();
 }
 
