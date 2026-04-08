@@ -52,7 +52,8 @@ function snapGrid(v, g = 20) { return Math.round(v / g) * g; }
 
 const TOOL_HINTS = {
   select: 'Click to select • Double-click to edit • Drag to move',
-  object: 'Click canvas to place object',
+  app: 'Click canvas to place a Django App container',
+  object: 'Click canvas (or inside an App) to place a Django Model object',
   stock: 'Click inside an object to place stock',
   const: 'Click inside an object to place constant',
   flow: 'Click source node, then click target node',
@@ -304,7 +305,7 @@ function drawPreviewLine(x1, y1, x2, y2) {
 // localStorage persistence
 function saveToStorage() {
   try {
-    localStorage.setItem('sd_model', JSON.stringify({ objects, nodes, edges, idCounter }));
+    localStorage.setItem('sd_model', JSON.stringify({ apps, objects, nodes, edges, idCounter }));
   } catch(e) {}
 }
 
@@ -313,7 +314,8 @@ function loadFromStorage() {
     const raw = localStorage.getItem('sd_model');
     if (!raw) return false;
     const data = JSON.parse(raw);
-    if (!data.nodes?.length && !data.objects?.length) return false;
+    if (!data.nodes?.length && !data.objects?.length && !data.apps?.length) return false;
+    apps = data.apps || [];
     objects = data.objects || [];
     nodes = data.nodes || [];
     edges = data.edges || [];
@@ -805,8 +807,14 @@ canvas.addEventListener('click', e => {
   const pos = getCanvasPos(e);
   const sx = snapGrid(pos.x), sy = snapGrid(pos.y);
   
-  if (tool === 'object') {
+  if (tool === 'app') {
+    const app = createApp(sx - 170, sy - 120);
+    renderAll();
+    selectApp(app);
+    openAppModal(app);
+  } else if (tool === 'object') {
     const obj = createObject(sx - 80, sy - 50);
+    if (obj.appId) resizeAppToFit(apps.find(a => a.id === obj.appId));
     renderAll();
     selectObject(obj);
     openObjectModal(obj);
